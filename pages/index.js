@@ -2,13 +2,15 @@ import { useState } from "react";
 
 export default function Home() {
   const [prompt, setPrompt] = useState("");
-  const [output, setOutput] = useState("");
+  const [files, setFiles] = useState([]); // [{name:"index.html", content:"..."}]
+  const [selectedFile, setSelectedFile] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  // --- Generate code from AI ---
   async function handleGenerate() {
     if (!prompt.trim()) return alert("Please enter a prompt!");
     setLoading(true);
-    setOutput("");
+
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
@@ -16,8 +18,18 @@ export default function Home() {
         body: JSON.stringify({ prompt }),
       });
       const data = await res.json();
-      if (res.ok) setOutput(data.output);
-      else alert("Error: " + data.error);
+      if (!res.ok) return alert("Error: " + data.error);
+
+      // Parse AI output into files
+      const blocks = Array.from(data.output.matchAll(/```(\w+)\n([\s\S]*?)```/g));
+      const newFiles = blocks.map((blk, i) => {
+        let name = blk[2].match(/\/\/\s*file:\s*(.+)/i)?.[1] || `file${i}.${blk[1]}`;
+        let content = blk[2].replace(/\/\/\s*file:.*\n/i, "").trim();
+        return { name, content };
+      });
+
+      setFiles(newFiles);
+      setSelectedFile(newFiles[0] || null);
     } catch (err) {
       alert("Request failed: " + err.message);
     } finally {
@@ -25,71 +37,105 @@ export default function Home() {
     }
   }
 
- function openPreview() {
-  if (!output) return alert("Generate code first!");
+  // --- Update currently selected file ---
+  function handleFileChange(e) {
+    setSelectedFile({ ...selectedFile, content: e.target.value });
+    setFiles(files.map(f => (f.name === selectedFile.name ? { ...f, content: e.target.value } : f)));
+  }
 
-  const blocks = Array.from(output.matchAll(/```(\w+)\n([\s\S]*?)```/g));
-  let htmlCode = "";
-  let cssCode = "";
-  let jsCode = "";
+  // --- Open live preview ---
+  function openPreview() {
+    if (files.length === 0) return alert("Generate code first!");
 
-  blocks.forEach((blk) => {
-    const lang = blk[1].toLowerCase();
-    const code = blk[2].trim();
-    if (lang === "html") htmlCode += code + "\n";
-    else if (lang === "css") cssCode += code + "\n";
-    else if (lang === "js" || lang === "javascript") jsCode += code + "\n";
-  });
+    let htmlBlocks = [], cssCode = "", jsCode = "";
+    files.forEach(f => {
+      const ext = f.name.split(".").pop().toLowerCase();
+      if (ext === "html") htmlBlocks.push(f.content);
+      else if (ext === "css") cssCode += f.content + "\n";
+      else if (ext === "js" || ext === "javascript") jsCode += f.content + "\n";
+    });
 
-  if (!htmlCode.trim()) htmlCode = "<html><body><h1>No HTML found</h1></body></html>";
+    let mergedHTML = htmlBlocks.join("\n");
+    if (cssCode) {
+      if (/<\/head>/i.test(mergedHTML)) mergedHTML = mergedHTML.replace(/<\/head>/i, `<style>${cssCode}</style>\n</head>`);
+      else mergedHTML = mergedHTML.replace(/<html>/i, `<html><head><style>${cssCode}</style></head>`);
+    }
+    if (jsCode) {
+      if (/<\/body>/i.test(mergedHTML)) mergedHTML = mergedHTML.replace(/<\/body>/i, `<script>${jsCode}</script>\n</body>`);
+      else mergedHTML += `<script>${jsCode}</script>`;
+    }
 
-  // Inject CSS into <head> and JS at the bottom of <body>
-  const finalHTML = htmlCode.replace(
-    /<\/head>/i,
-    `<style>${cssCode}</style>\n</head>`
-  ).replace(
-    /<\/body>/i,
-    `<script>${jsCode}</script>\n</body>`
-  );
-
-  const win = window.open("about:blank", "_blank");
-  win.document.open();
-  win.document.write(finalHTML);
-  win.document.close();
-}
-
+    const win = window.open("about:blank", "_blank");
+    win.document.open();
+    win.document.write(mergedHTML);
+    win.document.close();
+  }
 
   return (
-    <main style={{ fontFamily: "sans-serif", textAlign: "center", padding: 30 }}>
-      <h1>Ammoue AI Website Builder</h1>
-      <textarea
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        placeholder="Describe your website or app..."
-        rows="5"
-        cols="60"
-        style={{ width: "80%", padding: "10px" }}
-      />
-      <br />
-      <button onClick={handleGenerate} disabled={loading}>
-        {loading ? "Generating..." : "Generate"}
-      </button>
-      <button onClick={openPreview} style={{ marginLeft: 10 }}>
-        Preview Website
-      </button>
+    <main style={{ fontFamily: "sans-serif", display: "flex", padding: 20 }}>
+      {/* --- Left panel: Prompt + Generate --- */}
+      <div style={{ flex: 1, marginRight: 20 }}>
+        <h1>Ammoue AI Builder</h1>
+        <textarea
+          value={prompt}
+          onChange={e => setPrompt(e.target.value)}
+          placeholder="Describe your website or app..."
+          rows="5"
+          style={{ width: "100%", padding: 10 }}
+        />
+        <br />
+        <button onClick={handleGenerate} disabled={loading}>
+          {loading ? "Generating..." : "Generate"}
+        </button>
+        <button onClick={openPreview} style={{ marginLeft: 10 }}>
+          Preview Website
+        </button>
 
-      <pre
-        style={{
-          textAlign: "left",
-          background: "#111",
-          color: "#0f0",
-          padding: "20px",
-          marginTop: "20px",
-          whiteSpace: "pre-wrap",
-        }}
-      >
-        {output}
-      </pre>
+        {/* --- File list --- */}
+        {files.length > 0 && (
+          <div style={{ marginTop: 20 }}>
+            <h3>Files:</h3>
+            <ul style={{ listStyle: "none", padding: 0 }}>
+              {files.map(f => (
+                <li key={f.name}>
+                  <button
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      textAlign: "left",
+                      background: selectedFile?.name === f.name ? "#ddd" : "#f5f5f5",
+                      border: "1px solid #ccc",
+                      padding: "5px 10px",
+                      marginBottom: 2,
+                      cursor: "pointer"
+                    }}
+                    onClick={() => setSelectedFile(f)}
+                  >
+                    {f.name}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      {/* --- Right panel: Editor --- */}
+      <div style={{ flex: 2 }}>
+        {selectedFile ? (
+          <>
+            <h3>Editing: {selectedFile.name}</h3>
+            <textarea
+              value={selectedFile.content}
+              onChange={handleFileChange}
+              rows="25"
+              style={{ width: "100%", fontFamily: "monospace", padding: 10 }}
+            />
+          </>
+        ) : (
+          <p>No file selected</p>
+        )}
+      </div>
     </main>
   );
 }
