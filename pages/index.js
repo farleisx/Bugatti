@@ -25,15 +25,39 @@ export default function Home() {
     }
   }
 
-  function openPreview() {
-    if (!output) return alert("Generate code first!");
-    const htmlMatch = output.match(/```html([\s\S]*?)```/);
-    const htmlCode = htmlMatch ? htmlMatch[1].trim() : output;
-    const win = window.open("about:blank", "_blank");
-    win.document.open();
-    win.document.write(htmlCode);
-    win.document.close();
-  }
+ function openPreview() {
+  if (!output) return alert("Generate code first!");
+
+  const blocks = Array.from(output.matchAll(/```(\w+)\n([\s\S]*?)```/g));
+  let htmlCode = "";
+  let cssCode = "";
+  let jsCode = "";
+
+  blocks.forEach((blk) => {
+    const lang = blk[1].toLowerCase();
+    const code = blk[2].trim();
+    if (lang === "html") htmlCode += code + "\n";
+    else if (lang === "css") cssCode += code + "\n";
+    else if (lang === "js" || lang === "javascript") jsCode += code + "\n";
+  });
+
+  if (!htmlCode.trim()) htmlCode = "<html><body><h1>No HTML found</h1></body></html>";
+
+  // Inject CSS into <head> and JS at the bottom of <body>
+  const finalHTML = htmlCode.replace(
+    /<\/head>/i,
+    `<style>${cssCode}</style>\n</head>`
+  ).replace(
+    /<\/body>/i,
+    `<script>${jsCode}</script>\n</body>`
+  );
+
+  const win = window.open("about:blank", "_blank");
+  win.document.open();
+  win.document.write(finalHTML);
+  win.document.close();
+}
+
 
   return (
     <main style={{ fontFamily: "sans-serif", textAlign: "center", padding: 30 }}>
