@@ -104,40 +104,79 @@ export default function Home() {
     win.document.close();
   }
 
+  // --- Generate a random AI prompt and immediately generate project ---
+async function generateAIprompt() {
+  setLoading(true);
+  try {
+    // Ask AI to create a random project prompt
+    const res = await fetch("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt: "Give me a short, unique website or app idea prompt suitable for generating multi-file code (HTML, CSS, JS). Only return the idea in one paragraph.",
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) return alert("Error: " + data.error);
+
+    // Extract AI text (remove markdown if any)
+    const randomPrompt = (data.output.match(/```(?:\w+)?\n([\s\S]*?)```/)?.[1] || data.output).trim();
+
+    // Set prompt and automatically generate project
+    setPrompt(randomPrompt);
+    await handleGenerate();
+  } catch (err) {
+    alert("Failed to generate random prompt: " + err.message);
+  } finally {
+    setLoading(false);
+  }
+}
+
+
   return (
-    <main style={{ fontFamily: "sans-serif", display: "flex", padding: 20 }}>
-      {/* --- Left panel: Prompt + Generate + Update --- */}
-      <div style={{ flex: 1, marginRight: 20 }}>
-        <h1>Ammoue AI Builder</h1>
+ <main style={{ fontFamily: "sans-serif", display: "flex", padding: 20 }}>
+  {/* --- Left panel: Prompt + Generate + Update --- */}
+  <div style={{ flex: 1, marginRight: 20 }}>
+    <h1>Ammoue AI Builder</h1>
 
-        {/* Generate new project */}
-        <textarea
-          value={prompt}
-          onChange={e => setPrompt(e.target.value)}
-          placeholder="Describe your website or app..."
-          rows="5"
-          style={{ width: "100%", padding: 10 }}
-        />
-        <br />
-        <button onClick={handleGenerate} disabled={loading}>
-          {loading ? "Generating..." : "Generate"}
-        </button>
-        <button onClick={openPreview} style={{ marginLeft: 10 }}>
-          Preview Website
-        </button>
+    {/* Generate new project */}
+    <textarea
+      value={prompt}
+      onChange={e => setPrompt(e.target.value)}
+      placeholder="Describe your website or app..."
+      rows="5"
+      style={{ width: "100%", padding: 10 }}
+    />
+    <br />
+    <button onClick={handleGenerate} disabled={loading}>
+      {loading ? "Generating..." : "Generate"}
+    </button>
+    <button onClick={openPreview} style={{ marginLeft: 10 }}>
+      Preview Website
+    </button>
 
-        {/* Update selected file */}
-        <h3 style={{ marginTop: 20 }}>Update Current Code</h3>
-        <textarea
-          value={updatePrompt}
-          onChange={e => setUpdatePrompt(e.target.value)}
-          placeholder="Describe changes to the selected file..."
-          rows="3"
-          style={{ width: "100%", padding: 10 }}
-        />
-        <button onClick={handleUpdate} disabled={loading || !selectedFile} style={{ marginTop: 5 }}>
-          {loading ? "Updating..." : "Update Code"}
-        </button>
+    {/* AI-generated random prompt button */}
+    <button onClick={generateAIprompt} style={{ marginTop: 10 }}>
+      {loading ? "Generating Random Project..." : "Random AI Prompt & Generate"}
+    </button>
+
+    {/* Update selected file */}
+    <h3 style={{ marginTop: 20 }}>Update Current Code</h3>
+    <textarea
+      value={updatePrompt}
+      onChange={e => setUpdatePrompt(e.target.value)}
+      placeholder="Describe changes to the selected file..."
+      rows="3"
+      style={{ width: "100%", padding: 10 }}
+    />
+    <button
+      onClick={handleUpdate}
+      disabled={loading || !selectedFile}
+      style={{ marginTop: 5 }}
+    >
+      {loading ? "Updating..." : "Update Code"}
+    </button>
+  </div>
 
         {/* File list */}
         {files.length > 0 && (
